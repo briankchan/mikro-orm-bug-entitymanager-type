@@ -1,4 +1,4 @@
-import { Entity, MikroORM, PrimaryKey, Property } from '@mikro-orm/sqlite';
+import { Entity, MikroORM, PrimaryKey, Property, EntityManager } from '@mikro-orm/sqlite';
 
 @Entity()
 class User {
@@ -19,15 +19,24 @@ class User {
 
 }
 
-let orm: MikroORM;
+class MyEntityManager extends EntityManager {
+  foo() {
+    return 'bar';
+  }
+}
 
-beforeAll(async () => {
-  orm = await MikroORM.init({
+let orm: Awaited<ReturnType<typeof createOrm>>;
+
+function createOrm() {
+  return MikroORM.init({
     dbName: ':memory:',
     entities: [User],
-    debug: ['query', 'query-params'],
-    allowGlobalContext: true, // only for testing
-  });
+    entityManager: MyEntityManager,
+  })
+}
+
+beforeAll(async () => {
+  orm = await createOrm();
   await orm.schema.refreshDatabase();
 });
 
@@ -35,17 +44,12 @@ afterAll(async () => {
   await orm.close(true);
 });
 
-test('basic CRUD example', async () => {
-  orm.em.create(User, { name: 'Foo', email: 'foo' });
-  await orm.em.flush();
-  orm.em.clear();
-
-  const user = await orm.em.findOneOrFail(User, { email: 'foo' });
-  expect(user.name).toBe('Foo');
-  user.name = 'Bar';
-  orm.em.remove(user);
-  await orm.em.flush();
-
-  const count = await orm.em.count(User, { email: 'foo' });
-  expect(count).toBe(0);
+test('no fork', async () => {
+  expect(orm.em.foo()).toBe('bar');
+});
+test('fork', async () => {
+  // typescript error:
+  // Property 'foo' does not exist on type 'SqlEntityManager<AbstractSqlDriver<AbstractSqlConnection, AbstractSqlPlatform>>'.
+  expect(orm.em.fork().foo()).toBe('bar');
+  // but the code executes correctly
 });
